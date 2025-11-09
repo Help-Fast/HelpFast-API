@@ -88,24 +88,28 @@ public class LoginController : ControllerBase
         var exists = await _db.Usuarios.AnyAsync(u => u.Email.ToLower() == email.ToLower());
         if (exists) return Conflict(new { error = "Email já cadastrado" });
 
+        // define cargo padrão como Cliente (id = 1) caso não informado
+        int cargoId = dbo.CargoId ?? 1;
+
+        // valida se o cargo existe
+        var cargoExists = await _db.Cargos.AnyAsync(c => c.Id == cargoId);
+        if (!cargoExists) return BadRequest(new { error = "Cargo inválido" });
+
         var user = new Usuario
         {
             Nome = dbo.Nome.Trim(),
             Email = email,
-            Telefone = dbo.Telefone.Trim()
+            Telefone = dbo.Telefone.Trim(),
+            CargoId = cargoId
         };
-
-        if (dbo.CargoId.HasValue)
-        {
-            user.CargoId = dbo.CargoId.Value;
-        }
 
         user.Senha = _pwdHasher.HashPassword(user, dbo.Senha);
 
         _db.Usuarios.Add(user);
         await _db.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(Post), new { id = user.Id }, new { user.Id, user.Nome, user.Email, user.Telefone, user.CargoId });
+        // Retorna localização para endpoint de usuários (GetById)
+        return CreatedAtAction("GetById", "Usuarios", new { id = user.Id }, new { user.Id, user.Nome, user.Email, user.Telefone, user.CargoId });
     }
 
     private static string ComputeSha256Hash(string rawData)

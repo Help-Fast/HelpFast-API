@@ -13,7 +13,9 @@ namespace ApiHelpFast.Models
         [NotMapped]
         public string? Assunto { get; set; }
 
-        public string? Motivo { get; set; }
+        [Required]
+        [MaxLength(1000)]
+        public string Motivo { get; set; } = null!;
 
         // FK para Cliente (usuario que abriu)
         public int ClienteId { get; set; }
@@ -28,13 +30,10 @@ namespace ApiHelpFast.Models
         [MaxLength(50)]
         public string? Status { get; set; }
 
-        public DateTime? DataAbertura { get; set; }
+        public DateTime DataAbertura { get; set; }
         public DateTime? DataFechamento { get; set; }
 
-        // Navegação para Chats
-        public ICollection<Chat> Chats { get; set; } = new List<Chat>();
-
-            // Navegação para histórico de alterações do chamado
-            public ICollection<HistoricoChamado> Historicos { get; set; } = new List<HistoricoChamado>();
+        // Navegação para histórico de alterações do chamado
+        public ICollection<HistoricoChamado> Historicos { get; set; } = new List<HistoricoChamado>();
     }
 }

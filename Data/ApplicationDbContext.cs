@@ -9,7 +9,6 @@ public class ApplicationDbContext : DbContext
     public DbSet<Usuario> Usuarios { get; set; } = null!;
     public DbSet<Cargo> Cargos { get; set; } = null!;
     public DbSet<Chamado> Chamados { get; set; } = null!;
-    public DbSet<Chat> Chats { get; set; } = null!;
     public DbSet<HistoricoChamado> Historicos { get; set; } = null!;
     public DbSet<Faq> Faqs { get; set; } = null!;
 
@@ -60,20 +59,6 @@ public class ApplicationDbContext : DbContext
              .HasForeignKey(x => x.TecnicoId)
              .OnDelete(DeleteBehavior.SetNull)
              .IsRequired(false);
-        });
-
-        modelBuilder.Entity<Chat>(b =>
-        {
-            b.ToTable("Chats", "dbo");
-            b.HasKey(x => x.Id);
-            b.Property(x => x.Mensagem).HasMaxLength(2000).IsRequired();
-            b.Property(x => x.DataEnvio).IsRequired();
-            b.Property(x => x.EnviadoPorCliente).IsRequired();
-            b.HasOne(x => x.Chamado)
-             .WithMany(c => c.Chats!)
-             .HasForeignKey(x => x.ChamadoId)
-             .OnDelete(DeleteBehavior.Cascade)
-             .IsRequired();
         });
 
         modelBuilder.Entity<HistoricoChamado>(b =>

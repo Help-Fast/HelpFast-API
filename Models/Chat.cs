@@ -14,7 +14,7 @@ namespace ApiHelpFast.Models
         [ForeignKey(nameof(ChamadoId))]
         public Chamado? Chamado { get; set; }
 
-        // Remetente / Destinatário (ids e navegações)
+        // Remetente / Destinatário (ids e navegações) - DB expects non-null values
         public int RemetenteId { get; set; }
         [ForeignKey(nameof(RemetenteId))]
         public Usuario? Remetente { get; set; }
@@ -23,17 +23,24 @@ namespace ApiHelpFast.Models
         [ForeignKey(nameof(DestinatarioId))]
         public Usuario? Destinatario { get; set; }
 
-    [Column(TypeName = "nvarchar(max)")]
-    public string Mensagem { get; set; } = null!;
+        [MaxLength(2000)]
+        [Required]
+        public string Mensagem { get; set; } = null!;
 
-    public DateTime DataEnvio { get; set; }
+        public DateTime DataEnvio { get; set; }
 
-    // indica se a mensagem foi enviada pelo cliente (true) ou pelo técnico/assistente (false)
-    public bool EnviadoPorCliente { get; set; }
+        // Tipo de mensagem persistido: "Usuario" para cliente, "Assistente"/"Sistema" para IA/técnico
+        [MaxLength(50)]
+        [Required]
+        public string Tipo { get; set; } = "Usuario";
 
-    // Tipo de mensagem: "Usuario" ou "Assistente"
-    [MaxLength(50)]
-    public string? Tipo { get; set; } = "Usuario";
+        // Indica se a mensagem foi enviada pelo cliente (true) ou não — não mapeada (computed from Tipo)
+        [NotMapped]
+        public bool EnviadoPorCliente
+        {
+            get => string.Equals(Tipo, "Usuario", StringComparison.OrdinalIgnoreCase);
+            set => Tipo = value ? "Usuario" : "Assistente";
+        }
 
         // Propriedade de alias para compatibilidade com views
         [NotMapped]

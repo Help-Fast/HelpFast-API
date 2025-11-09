@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ApiHelpFast.Models;
+using ApiHelpFast.Data;
 
 namespace ApiHelpFast.Controllers
 {
@@ -10,9 +11,9 @@ namespace ApiHelpFast.Controllers
 	[Route("api/[controller]")]
 	public class FaqsController : ControllerBase
 	{
-		private readonly DbContext _context;
+		private readonly ApplicationDbContext _context;
 
-		public FaqsController(DbContext context)
+		public FaqsController(ApplicationDbContext context)
 		{
 			_context = context;
 		}
