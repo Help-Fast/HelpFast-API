@@ -3,7 +3,6 @@ using ApiHelpFast.Data;
 using ApiHelpFast.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
-using System.Security.Claims;
 
 namespace ApiHelpFast.Controllers;
 
@@ -12,12 +11,13 @@ namespace ApiHelpFast.Controllers;
 public class ChamadosController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
+
     public ChamadosController(ApplicationDbContext db) => _db = db;
 
     // GET /api/chamados
     [AllowAnonymous]
     [HttpGet]
-    public async Task<IActionResult> GetAll()
+    public async Task<IActionResult> GetAllOriginal()
     {
         var items = await _db.Chamados
             .AsNoTracking()

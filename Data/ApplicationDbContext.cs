@@ -9,8 +9,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<Usuario> Usuarios { get; set; } = null!;
     public DbSet<Cargo> Cargos { get; set; } = null!;
     public DbSet<Chamado> Chamados { get; set; } = null!;
+    public DbSet<Chat> Chats { get; set; } = null!;
     public DbSet<HistoricoChamado> Historicos { get; set; } = null!;
     public DbSet<Faq> Faqs { get; set; } = null!;
+    public DbSet<ChatIaResult> ChatIaResults { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -61,6 +63,26 @@ public class ApplicationDbContext : DbContext
              .IsRequired(false);
         });
 
+        modelBuilder.Entity<Chat>(b =>
+        {
+            b.ToTable("Chats", "dbo");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Mensagem).HasMaxLength(2000).IsRequired();
+            b.Property(x => x.DataEnvio).IsRequired();
+            b.Property(x => x.Tipo).HasMaxLength(50).IsRequired();
+            b.Property(x => x.RemetenteId).IsRequired(false);
+            b.Property(x => x.DestinatarioId).IsRequired(false);
+            b.Property(x => x.ParentChatId).IsRequired(false);
+            b.HasOne(x => x.Chamado)
+             .WithMany(c => c.Chats!)
+             .HasForeignKey(x => x.ChamadoId)
+             .OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.ParentChat)
+             .WithMany()
+             .HasForeignKey(x => x.ParentChatId)
+             .OnDelete(DeleteBehavior.SetNull);
+        });
+
         modelBuilder.Entity<HistoricoChamado>(b =>
         {
             b.ToTable("HistoricoChamados", "dbo");
@@ -80,6 +102,19 @@ public class ApplicationDbContext : DbContext
             b.HasKey(x => x.Id);
             b.Property(x => x.Pergunta).HasMaxLength(1000).IsRequired();
             b.Property(x => x.Resposta).HasMaxLength(4000).IsRequired();
+        });
+
+        modelBuilder.Entity<ChatIaResult>(b =>
+        {
+            b.ToTable("ChatIaResults", "dbo");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.ChatId).IsRequired();
+            b.Property(x => x.ResultJson).HasMaxLength(4000).IsRequired(false);
+            b.Property(x => x.CreatedAt).IsRequired();
+            b.HasOne<Chat>()
+             .WithMany()
+             .HasForeignKey(x => x.ChatId)
+             .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Seed básico de cargos (útil para registrar clientes e testes)

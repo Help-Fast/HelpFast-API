@@ -14,12 +14,17 @@ namespace ApiHelpFast.Models
         [ForeignKey(nameof(ChamadoId))]
         public Chamado? Chamado { get; set; }
 
-        // Remetente / Destinatário (ids e navegações) - DB expects non-null values
-        public int RemetenteId { get; set; }
+        // self-reference to link replies
+        public int? ParentChatId { get; set; }
+        [ForeignKey(nameof(ParentChatId))]
+        public Chat? ParentChat { get; set; }
+
+        // Remetente / Destinatário (ids e navegações) - podem ser nulos para mensagens de sistema
+        public int? RemetenteId { get; set; }
         [ForeignKey(nameof(RemetenteId))]
         public Usuario? Remetente { get; set; }
 
-        public int DestinatarioId { get; set; }
+        public int? DestinatarioId { get; set; }
         [ForeignKey(nameof(DestinatarioId))]
         public Usuario? Destinatario { get; set; }
 

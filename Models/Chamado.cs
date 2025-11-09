@@ -33,6 +33,9 @@ namespace ApiHelpFast.Models
         public DateTime DataAbertura { get; set; }
         public DateTime? DataFechamento { get; set; }
 
+        // Navegação para Chats
+        public ICollection<Chat> Chats { get; set; } = new List<Chat>();
+
         // Navegação para histórico de alterações do chamado
         public ICollection<HistoricoChamado> Historicos { get; set; } = new List<HistoricoChamado>();
     }
