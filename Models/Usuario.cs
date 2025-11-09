@@ -18,6 +18,9 @@ namespace ApiHelpFast.Models
         // Armazena o hash da senha
         public string? Senha { get; set; }
 
+        [MaxLength(50)]
+        public string? TipoUsuario { get; set; }
+
         // FK para Cargo
         public int CargoId { get; set; }
 
