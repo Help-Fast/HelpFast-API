@@ -22,9 +22,9 @@ public class AIService : IAIService
 
     public AIService(ApplicationDbContext context, IGoogleDriveService googleDriveService, IOpenAIService openAIService)
     {
-        _context = context;
-        _googleDriveService = googleDriveService;
-        _openAIService = openAIService;
+        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _googleDriveService = googleDriveService ?? throw new ArgumentNullException(nameof(googleDriveService));
+        _openAIService = openAIService ?? throw new ArgumentNullException(nameof(openAIService));
     }
 
     #region Chat Inteligente
@@ -33,19 +33,24 @@ public class AIService : IAIService
     {
         try
         {
-            // Buscar contexto do usuário
-            var contexto = await ConstruirContextoUsuarioAsync(usuarioId);
+            if (string.IsNullOrWhiteSpace(mensagem))
+            {
+                return new ChatResponse
+                {
+                    Resposta = "Por favor, envie uma mensagem válida.",
+                    EscalarParaHumano = false
+                };
+            }
 
+            var contexto = await ConstruirContextoUsuarioAsync(usuarioId);
             var systemPrompt = await ObterSystemPromptAsync(contexto);
             var respostaTexto = await _openAIService.EnviarPerguntaAsync(mensagem, systemPrompt);
 
-            var response = new ChatResponse
+            return new ChatResponse
             {
                 Resposta = respostaTexto,
                 EscalarParaHumano = false
             };
-
-            return response;
         }
         catch (Exception ex)
         {
@@ -70,44 +75,75 @@ public class AIService : IAIService
             throw new ArgumentException("A pergunta do usuário é obrigatória.", nameof(pergunta));
         }
 
+        string? conteudoDocumento = null;
         try
         {
-            var conteudoDocumento = await _googleDriveService.LerDocumentoComoStringAsync(ProcedimentosFileId, cancellationToken);
+            conteudoDocumento = await _googleDriveService.LerDocumentoComoStringAsync(ProcedimentosFileId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Aviso: falha ao ler documento {ProcedimentosFileId}: {ex.Message}");
+        }
 
-            if (string.IsNullOrWhiteSpace(conteudoDocumento))
-            {
-                throw new InvalidOperationException("O documento informado não possui conteúdo legível.");
-            }
+        var promptBuilder = new StringBuilder();
 
-            var promptBuilder = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(conteudoDocumento))
+        {
             promptBuilder.AppendLine("Você é o assistente virtual HelpFast. Utilize o documento abaixo como fonte de verdade para responder à pergunta do usuário.");
             promptBuilder.AppendLine();
             promptBuilder.AppendLine("### Documento de Referência");
             promptBuilder.AppendLine(conteudoDocumento);
             promptBuilder.AppendLine();
             promptBuilder.AppendLine("Responda em português, de maneira objetiva e cite trechos relevantes do documento quando necessário. Caso a resposta não esteja presente, informe que não encontrou a informação.");
+        }
+        else
+        {
+            promptBuilder.AppendLine("Você é o assistente virtual HelpFast. Responda em português de forma objetiva e cordial.");
+            promptBuilder.AppendLine("Se tiver informações insuficientes para uma resposta definitiva, informe que vai encaminhar para suporte humano.");
+        }
 
+        if (usuarioId.HasValue)
+        {
+            try
+            {
+                var contexto = await ConstruirContextoUsuarioAsync(usuarioId.Value);
+                if (contexto.TryGetValue("nomeUsuario", out var nome))
+                {
+                    promptBuilder.AppendLine($"- Nome: {nome}");
+                }
+
+                if (contexto.TryGetValue("emailUsuario", out var email))
+                {
+                    promptBuilder.AppendLine($"- E-mail: {email}");
+                }
+
+                if (contexto.TryGetValue("tipoUsuario", out var tipo))
+                {
+                    promptBuilder.AppendLine($"- Tipo de usuário: {tipo}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Aviso: falha ao buscar contexto do usuário {usuarioId}: {ex.Message}");
+            }
+        }
+
+        try
+        {
             var resposta = await _openAIService.EnviarPerguntaAsync(pergunta, promptBuilder.ToString(), cancellationToken);
 
-            var response = new ChatResponse
+            return new ChatResponse
             {
                 Resposta = resposta,
                 EscalarParaHumano = false
             };
-
-            return response;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Erro ao consultar documento {ProcedimentosFileId} com OpenAI: {ex.Message}");
-            if (ex.InnerException != null)
-            {
-                Console.WriteLine($"Erro interno: {ex.InnerException.Message}");
-            }
-
+            Console.WriteLine($"Erro ao consultar OpenAI para pergunta '{pergunta}': {ex.Message}");
             return new ChatResponse
             {
-                Resposta = "Não foi possível obter uma resposta com base no documento informado. Tente novamente mais tarde.",
+                Resposta = "Não foi possível obter uma resposta no momento. Tente novamente mais tarde.",
                 EscalarParaHumano = true
             };
         }
@@ -121,6 +157,11 @@ public class AIService : IAIService
     {
         try
         {
+            if (chamado == null)
+            {
+                throw new ArgumentNullException(nameof(chamado));
+            }
+
             if (!await IsCategorizacaoAtivaAsync())
             {
                 Console.WriteLine("Categorização automática desabilitada");
@@ -168,7 +209,7 @@ public class AIService : IAIService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Erro ao categorizar chamado {chamado.Id}: {ex.Message}");
+            Console.WriteLine($"Erro ao categorizar chamado {chamado?.Id}: {ex.Message}");
             return new CategorizacaoResponse();
         }
     }
@@ -180,7 +221,7 @@ public class AIService : IAIService
             var coerente = string.Equals(categoriaOriginal, categoriaCorrigida, StringComparison.OrdinalIgnoreCase)
                 || string.IsNullOrWhiteSpace(categoriaOriginal);
 
-            return coerente;
+            return await Task.FromResult(coerente);
         }
         catch (Exception ex)
         {
@@ -248,6 +289,11 @@ public class AIService : IAIService
     {
         try
         {
+            if (dataFim < dataInicio)
+            {
+                throw new ArgumentException("A data de fim não pode ser anterior à data de início.");
+            }
+
             var chamados = await _context.Chamados
                 .Where(c => c.DataAbertura >= dataInicio && c.DataAbertura <= dataFim)
                 .ToListAsync();
@@ -328,26 +374,26 @@ public class AIService : IAIService
     {
         try
         {
-            // Buscar FAQs relevantes baseado na descrição e categoria
+            if (string.IsNullOrWhiteSpace(descricao))
+            {
+                return new List<string>();
+            }
+
             var query = _context.Faqs
                 .Where(f => f.Ativo)
                 .AsQueryable();
 
-            // Categoria não existe no banco, ignorando filtro
-
-            // Busca simples por palavras-chave na descrição
             var palavrasChave = descricao.ToLower().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            
-            var consulta = query.AsQueryable();
 
-            if (palavrasChave.Length > 0)
+            if (palavrasChave.Length == 0)
             {
-                consulta = consulta.Where(f => palavrasChave.Any(p =>
-                    (!string.IsNullOrEmpty(f.Pergunta) && f.Pergunta.ToLower().Contains(p)) ||
-                    (!string.IsNullOrEmpty(f.Resposta) && f.Resposta.ToLower().Contains(p))));
+                return new List<string>();
             }
 
-            var faqs = await consulta
+            var faqs = await query
+                .Where(f => palavrasChave.Any(p =>
+                    (!string.IsNullOrEmpty(f.Pergunta) && f.Pergunta.ToLower().Contains(p)) ||
+                    (!string.IsNullOrEmpty(f.Resposta) && f.Resposta.ToLower().Contains(p))))
                 .OrderBy(f => f.Pergunta)
                 .Take(5)
                 .Select(f => f.Pergunta ?? string.Empty)
@@ -407,6 +453,11 @@ public class AIService : IAIService
 
     private async Task<string> ObterSystemPromptAsync(Dictionary<string, object> contextoUsuario)
     {
+        if (contextoUsuario == null)
+        {
+            contextoUsuario = new Dictionary<string, object>();
+        }
+
         var procedimentos = await ObterProcedimentosAsync();
         var builder = new StringBuilder();
 
@@ -461,12 +512,19 @@ public class AIService : IAIService
             }
             else
             {
-                await _context.Entry(usuario).Reference(u => u.Cargo).LoadAsync();
-                contexto["tipoUsuario"] = usuario.Cargo?.Nome ?? "Não informado";
+                try
+                {
+                    await _context.Entry(usuario).Reference(u => u.Cargo).LoadAsync();
+                    contexto["tipoUsuario"] = usuario.Cargo?.Nome ?? "Não informado";
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Aviso: falha ao carregar cargo do usuário {usuarioId}: {ex.Message}");
+                    contexto["tipoUsuario"] = "Não informado";
+                }
             }
             contexto["nomeUsuario"] = usuario.Nome ?? "Não informado";
             contexto["emailUsuario"] = usuario.Email ?? "Não informado";
-
             contexto["historicoInteracoes"] = new List<object>();
         }
 

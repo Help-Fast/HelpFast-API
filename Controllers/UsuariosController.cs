@@ -33,7 +33,7 @@ public class UsuariosController : ControllerBase
             .Where(u => u.Id == id)
             .Select(u => new { u.Id, u.Nome, u.Email, u.Telefone, Cargo = u.Cargo != null ? u.Cargo.Nome : null, u.CargoId })
             .FirstOrDefaultAsync();
-        if (user == null) return NotFound();
+        if (user == null) return NotFound(new { error = "Usuário não encontrado", id });
         return Ok(user);
     }
 
@@ -65,13 +65,68 @@ public class UsuariosController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var user = await _db.Usuarios.FindAsync(id);
-        if (user == null) return NotFound();
+        // Try to load user; if not present, treat as idempotent success
+        var user = await _db.Usuarios.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id);
+        if (user == null)
+        {
+            return NoContent();
+        }
 
-        // Não permitir deletar admin padrão (opcional) ou se vinculado a chamados importantes
-        // Para simplicidade, permitimos remoção; cascades serão aplicadas conforme model
-        _db.Usuarios.Remove(user);
-        await _db.SaveChangesAsync();
+        var strategy = _db.Database.CreateExecutionStrategy();
+
+        try
+        {
+            await strategy.ExecuteAsync(async () =>
+            {
+                await using var tx = await _db.Database.BeginTransactionAsync();
+
+                // 1) Find chamados where user is cliente (ids)
+                var chamadosComoClienteIds = await _db.Chamados.Where(c => c.ClienteId == id).Select(c => c.Id).ToListAsync();
+
+                if (chamadosComoClienteIds.Count > 0)
+                {
+                    // delete related historicos and chats for these chamados, then delete chamados
+                    var ids = string.Join(",", chamadosComoClienteIds);
+                    // use parameterized deletes per idlist not supported; execute per id to avoid SQL concat
+                    foreach (var cid in chamadosComoClienteIds)
+                    {
+                        await _db.Database.ExecuteSqlRawAsync("DELETE FROM dbo.HistoricoChamados WHERE ChamadoId = {0}", cid);
+                        await _db.Database.ExecuteSqlRawAsync("DELETE FROM dbo.Chats WHERE ChamadoId = {0}", cid);
+                        await _db.Database.ExecuteSqlRawAsync("DELETE FROM dbo.Chamados WHERE Id = {0}", cid);
+                    }
+                }
+
+                // 2) For chamados where user is tecnico, unset tecnico and insert historico
+                var chamadosComoTecnicoIds = await _db.Chamados.Where(c => c.TecnicoId == id).Select(c => c.Id).ToListAsync();
+                var now = DateTime.UtcNow;
+                foreach (var cid in chamadosComoTecnicoIds)
+                {
+                    await _db.Database.ExecuteSqlRawAsync("UPDATE dbo.Chamados SET TecnicoId = NULL, Status = {1} WHERE Id = {0}", cid, "Aberto");
+
+                    var acao = $"Técnico {user.Nome} removido do chamado";
+                    // Insert historico
+                    await _db.Database.ExecuteSqlRawAsync(
+                        "INSERT INTO dbo.HistoricoChamados (ChamadoId, Acao, Data, UsuarioId) VALUES ({0}, {1}, {2}, {3})",
+                        cid, acao, now, id);
+                }
+
+                // 3) Remove historicos that reference this user (UsuarioId)
+                await _db.Database.ExecuteSqlRawAsync("DELETE FROM dbo.HistoricoChamados WHERE UsuarioId = {0}", id);
+
+                // 4) Nullify user references in chats (RemetenteId, DestinatarioId)
+                await _db.Database.ExecuteSqlRawAsync("UPDATE dbo.Chats SET RemetenteId = NULL WHERE RemetenteId = {0}", id);
+                await _db.Database.ExecuteSqlRawAsync("UPDATE dbo.Chats SET DestinatarioId = NULL WHERE DestinatarioId = {0}", id);
+
+                // 5) Finally delete the user
+                await _db.Database.ExecuteSqlRawAsync("DELETE FROM dbo.Usuarios WHERE Id = {0}", id);
+
+                await tx.CommitAsync();
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = "Falha ao remover usuário", detail = ex.Message });
+        }
 
         return NoContent();
     }

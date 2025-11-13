@@ -18,6 +18,8 @@ namespace ApiHelpFast.Models
         // Armazena o hash da senha
         public string? Senha { get; set; }
 
+        // Propriedade apenas no modelo, não mapeada no banco
+        [NotMapped]
         [MaxLength(50)]
         public string? TipoUsuario { get; set; }
 
@@ -33,8 +35,8 @@ namespace ApiHelpFast.Models
 
         public DateTime? UltimoLogin { get; set; }
 
-            // Navegações para chamados: como cliente (quem abriu) e como tecnico (quem atendeu)
-            public ICollection<Chamado> ChamadosComoCliente { get; set; } = new List<Chamado>();
-            public ICollection<Chamado> ChamadosComoTecnico { get; set; } = new List<Chamado>();
+        // Navegações para chamados: como cliente (quem abriu) e como tecnico (quem atendeu)
+        public ICollection<Chamado> ChamadosComoCliente { get; set; } = new List<Chamado>();
+        public ICollection<Chamado> ChamadosComoTecnico { get; set; } = new List<Chamado>();
     }
 }

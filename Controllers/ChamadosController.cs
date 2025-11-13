@@ -142,22 +142,83 @@ public class ChamadosController : ControllerBase
         var chamado = await _db.Chamados.FindAsync(id);
         if (chamado == null) return NotFound();
 
-        var status = dto.Status.Trim();
-        if (string.Equals(status, "andamento", StringComparison.OrdinalIgnoreCase) || string.Equals(status, "em andamento", StringComparison.OrdinalIgnoreCase))
-            status = "Em Atendimento";
+        var statusRaw = dto.Status.Trim();
+        // normalize common variants
+        if (string.Equals(statusRaw, "andamento", StringComparison.OrdinalIgnoreCase) || string.Equals(statusRaw, "em andamento", StringComparison.OrdinalIgnoreCase))
+            statusRaw = "Em Atendimento";
 
         var allowed = new[] { "Aberto", "Em Atendimento", "Finalizado", "Cancelado" };
-        if (!allowed.Contains(status)) return BadRequest(new { error = "Status inválido" });
+        if (!allowed.Contains(statusRaw)) return BadRequest(new { error = "Status inválido" });
 
-        chamado.Status = status;
-        if ((status == "Finalizado" || status == "Cancelado") && chamado.DataFechamento == null)
-            chamado.DataFechamento = DateTime.UtcNow;
+        var strategy = _db.Database.CreateExecutionStrategy();
+        try
+        {
+            await strategy.ExecuteAsync(async () =>
+            {
+                await using var tx = await _db.Database.BeginTransactionAsync();
 
-        if (status == "Em Atendimento" && dto.TecnicoId.HasValue)
-            chamado.TecnicoId = dto.TecnicoId.Value;
+                var now = DateTime.UtcNow;
 
-        await _db.SaveChangesAsync();
-        return Ok(new { chamado.Id, chamado.Status, chamado.TecnicoId, chamado.DataFechamento });
+                // handle technician assignment if provided
+                if (dto.TecnicoId.HasValue)
+                {
+                    var tecnico = await _db.Usuarios.FindAsync(dto.TecnicoId.Value);
+                    if (tecnico == null) throw new InvalidOperationException("Técnico informado não existe");
+
+                    chamado.TecnicoId = tecnico.Id;
+                    if (string.Equals(statusRaw, "Em Atendimento", StringComparison.OrdinalIgnoreCase))
+                        chamado.Status = "Em Atendimento";
+
+                    _db.Historicos.Add(new HistoricoChamado
+                    {
+                        ChamadoId = chamado.Id,
+                        Acao = $"Atribuído a técnico {tecnico.Nome}",
+                        Data = now,
+                        UsuarioId = tecnico.Id
+                    });
+                }
+
+                // status change handling
+                var prevStatus = chamado.Status;
+                chamado.Status = statusRaw;
+
+                if ((statusRaw == "Finalizado" || statusRaw == "Cancelado") && chamado.DataFechamento == null)
+                {
+                    chamado.DataFechamento = now;
+                }
+                else if (statusRaw == "Aberto")
+                {
+                    // reopening: clear DataFechamento
+                    chamado.DataFechamento = null;
+                }
+
+                // Add history entry describing the status change
+                var actorId = dto.TecnicoId ?? chamado.TecnicoId ?? 0;
+                _db.Historicos.Add(new HistoricoChamado
+                {
+                    ChamadoId = chamado.Id,
+                    Acao = $"Status alterado de '{prevStatus}' para '{statusRaw}'",
+                    Data = now,
+                    UsuarioId = actorId
+                });
+
+                await _db.SaveChangesAsync();
+
+                await tx.CommitAsync();
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = "Erro ao atualizar status", detail = ex.Message });
+        }
+
+        // reload to return fresh values
+        var updated = await _db.Chamados.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+        return Ok(new { updated.Id, updated.Status, updated.TecnicoId, updated.DataFechamento });
     }
 }
 

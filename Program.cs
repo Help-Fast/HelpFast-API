@@ -23,6 +23,9 @@ builder.Services.AddSingleton<IGoogleDriveService, GoogleDriveService>();
 builder.Services.AddScoped<IAIService, AIService>();
 builder.Services.AddHttpClient<IOpenAIService, OpenAIService>();
 
+// add authorization services so [Authorize] attributes work
+builder.Services.AddAuthorization();
+
 var app = builder.Build();
 
 
@@ -32,5 +35,9 @@ var app = builder.Build();
 
 
 app.UseRouting();
+
+// enable authorization middleware required by endpoints with [Authorize]
+app.UseAuthorization();
+
 app.MapControllers();
 app.Run();
